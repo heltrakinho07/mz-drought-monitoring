@@ -719,6 +719,65 @@ with st.sidebar:
         index=0
     )
     
+    use_sentinel = False
+    s2_visual = "NDVI"
+    s2_cloud_pct = 20
+    
+    # Sentinel-2 configuration UI (only active if real-time GEE is authenticated)
+    if ee_effective_ready and not demo_mode:
+        st.markdown("---")
+        st.subheader("🛰️ Sentinel-2 (Alta Resolução 10m)", anchor=False)
+        use_sentinel = st.checkbox(
+            "Ativar Sentinel-2",
+            value=False,
+            help="Substitui os dados macro (MODIS 250m) pelas imagens de alta definição do Sentinel-2 (10m) para detalhe local aproximado."
+        )
+        if use_sentinel:
+            s2_visual = st.selectbox(
+                "Visualização Sentinel-2",
+                options=[
+                    "NDVI",
+                    "Verdadeira Cor (RGB)",
+                    "Falsa Cor (Infravermelho)",
+                    "Agricultura (SWIR/NIR)"
+                ],
+                index=0
+            )
+            s2_cloud_pct = st.slider(
+                "Cobertura de nuvens máx (%)",
+                min_value=0,
+                max_value=100,
+                value=20,
+                step=5
+            )
+            
+    # Map visualization parameters expander
+    st.markdown("---")
+    with st.expander("🎨 Ajustar Parâmetros do Mapa", expanded=False):
+        # Establish default min/max ranges depending on visual option
+        if use_sentinel:
+            if s2_visual == "NDVI":
+                def_min, def_max = 0.0, 0.8
+            elif s2_visual == "Verdadeira Cor (RGB)":
+                def_min, def_max = 0.0, 0.3
+            elif s2_visual == "Falsa Cor (Infravermelho)":
+                def_min, def_max = 0.0, 0.4
+            else: # Agricultura
+                def_min, def_max = 0.0, 0.5
+        else:
+            if selected_index == "NDVI (Índice de Vegetação)":
+                def_min, def_max = 0.1, 0.75
+            elif selected_index == "Precipitação (CHIRPS)":
+                def_min, def_max = 0.0, 1200.0
+            elif selected_index == "Anomalia de NDVI":
+                def_min, def_max = -0.15, 0.15
+            else: # Anomalia de Precipitação
+                def_min, def_max = -200.0, 200.0
+                
+        vis_min = st.number_input("Valor Mínimo (Min)", value=float(def_min), step=0.05, format="%.2f")
+        vis_max = st.number_input("Valor Máximo (Max)", value=float(def_max), step=0.05, format="%.2f")
+        vis_opacity = st.slider("Opacidade da Camada", min_value=0.0, max_value=1.0, value=1.0, step=0.1)
+
     st.markdown("---")
     st.markdown("Desenvolvido para Monitorização de Secas em Moçambique 🇲🇿")
 
@@ -835,7 +894,7 @@ def generate_simulated_data(region_name, start, end):
 
 # --- EARTH ENGINE COMPUTATIONS ---
 @st.cache_data(ttl="1h", show_spinner=False)
-def load_gee_data(lvl, province, district, start_date_str, end_date_str, index_type, custom_geom=None):
+def load_gee_data(lvl, province, district, start_date_str, end_date_str, index_type, custom_geom=None, use_sentinel=False, s2_visual="NDVI", s2_cloud_pct=20):
     start = ee.Date(start_date_str)
     end = ee.Date(end_date_str)
     
@@ -856,6 +915,46 @@ def load_gee_data(lvl, province, district, start_date_str, end_date_str, index_t
         if roi.size().getInfo() == 0:
             roi = ee.FeatureCollection("FAO/GAUL/2015/level1").filter(ee.Filter.eq('ADM0_NAME', 'Mozambique')).filter(ee.Filter.eq('ADM1_NAME', province))
             
+    if use_sentinel:
+        s2_coll = (ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
+                   .filterBounds(roi)
+                   .filterDate(start, end)
+                   .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', s2_cloud_pct)))
+                   
+        s2_size = s2_coll.size().getInfo()
+        if s2_size == 0:
+            s2_coll = (ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
+                       .filterBounds(roi)
+                       .filterDate(start.advance(-45, 'days'), end.advance(15, 'days'))
+                       .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', min(100, s2_cloud_pct + 20))))
+            s2_size = s2_coll.size().getInfo()
+            
+        if s2_size == 0:
+            raise ValueError(f"Não foram encontradas imagens do Sentinel-2 com pouca nebulosidade (<{s2_cloud_pct}%) na área e período selecionados.")
+            
+        def mask_clouds(img):
+            qa = img.select('QA60')
+            cloud_bit = 1 << 10
+            cirrus_bit = 1 << 11
+            mask = qa.bitwiseAnd(cloud_bit).eq(0).And(qa.bitwiseAnd(cirrus_bit).eq(0))
+            return img.updateMask(mask).divide(10000).copyProperties(img, ["system:time_start"])
+            
+        masked_coll = s2_coll.map(mask_clouds)
+        composite = masked_coll.median().clip(roi)
+        
+        if s2_visual == "NDVI":
+            result_img = composite.normalizedDifference(['B8', 'B4']).rename('NDVI')
+        elif s2_visual == "Verdadeira Cor (RGB)":
+            result_img = composite.select(['B4', 'B3', 'B2'])
+        elif s2_visual == "Falsa Cor (Infravermelho)":
+            result_img = composite.select(['B8', 'B4', 'B3'])
+        elif s2_visual == "Agricultura (SWIR/NIR)":
+            result_img = composite.select(['B11', 'B8', 'B2'])
+        else:
+            result_img = composite.normalizedDifference(['B8', 'B4']).rename('NDVI')
+            
+        return result_img, roi
+
     start_month = pd.to_datetime(start_date_str).month
     end_month = pd.to_datetime(end_date_str).month
     years = ee.List.sequence(2014, 2024)
@@ -1140,39 +1239,89 @@ with tab_map:
         
         with st.spinner("A renderizar camada do Earth Engine..."):
             try:
-                ee_img, roi = load_gee_data(analysis_level, selected_province, selected_district, start_date_str, end_date_str, selected_index, custom_geometry)
-                
-                if "Anomalia de NDVI" == selected_index:
-                    vis_params = {
-                        'min': -0.15,
-                        'max': 0.15,
-                        'palette': ['#d73027', '#f46d43', '#fdae61', '#fee08b', '#ffffbf', '#d9ef8b', '#a6d96a', '#66bd63', '#1a9850']
-                    }
-                    label_name = "Anomalia de NDVI"
-                elif "Anomalia de Precipitação" == selected_index:
-                    vis_params = {
-                        'min': -200,
-                        'max': 200,
-                        'palette': ['#8c510a', '#d8b365', '#f6e8c3', '#f5f5f5', '#c7eae5', '#5ab4ac', '#01665e']
-                    }
-                    label_name = "Anomalia de Precipitação (mm)"
-                elif "NDVI" in selected_index:
-                    vis_params = {
-                        'min': 0.1,
-                        'max': 0.75,
-                        'palette': ['#FFFFFF', '#CE7E45', '#DF923D', '#F1B555', '#FCD163', '#99B718', '#74A901', '#66A000', '#529400']
-                    }
-                    label_name = "NDVI Médio"
-                else:
-                    vis_params = {
-                        'min': 0,
-                        'max': 1200,
-                        'palette': ['#ffffcc', '#a1dab4', '#41b6c4', '#2c7fb8', '#253494']
-                    }
-                    label_name = "Precipitação Total (mm)"
+                if use_sentinel:
+                    ee_img, roi = load_gee_data(
+                        analysis_level, selected_province, selected_district, 
+                        start_date_str, end_date_str, selected_index, custom_geometry,
+                        use_sentinel=True, s2_visual=s2_visual, s2_cloud_pct=s2_cloud_pct
+                    )
                     
-                m.addLayer(ee_img, vis_params, selected_index)
-                m.add_colorbar(vis_params, label=label_name, layer_name=selected_index)
+                    if s2_visual == "NDVI":
+                        vis_params = {
+                            'min': vis_min,
+                            'max': vis_max,
+                            'palette': ['#FFFFFF', '#CE7E45', '#DF923D', '#F1B555', '#FCD163', '#99B718', '#74A901', '#66A000', '#529400'],
+                            'opacity': vis_opacity
+                        }
+                        label_name = "Sentinel-2 NDVI"
+                    elif s2_visual == "Verdadeira Cor (RGB)":
+                        vis_params = {
+                            'min': vis_min,
+                            'max': vis_max,
+                            'opacity': vis_opacity
+                        }
+                        label_name = "Sentinel-2 RGB (10m)"
+                    elif s2_visual == "Falsa Cor (Infravermelho)":
+                        vis_params = {
+                            'min': vis_min,
+                            'max': vis_max,
+                            'opacity': vis_opacity
+                        }
+                        label_name = "Sentinel-2 Falsa Cor (NIR)"
+                    else: # Agricultura
+                        vis_params = {
+                            'min': vis_min,
+                            'max': vis_max,
+                            'opacity': vis_opacity
+                        }
+                        label_name = "Sentinel-2 Agricultura"
+                    
+                    layer_name = f"Sentinel-2 {s2_visual}"
+                else:
+                    ee_img, roi = load_gee_data(
+                        analysis_level, selected_province, selected_district, 
+                        start_date_str, end_date_str, selected_index, custom_geometry,
+                        use_sentinel=False
+                    )
+                    
+                    if "Anomalia de NDVI" == selected_index:
+                        vis_params = {
+                            'min': vis_min,
+                            'max': vis_max,
+                            'palette': ['#d73027', '#f46d43', '#fdae61', '#fee08b', '#ffffbf', '#d9ef8b', '#a6d96a', '#66bd63', '#1a9850'],
+                            'opacity': vis_opacity
+                        }
+                        label_name = "Anomalia de NDVI"
+                    elif "Anomalia de Precipitação" == selected_index:
+                        vis_params = {
+                            'min': vis_min,
+                            'max': vis_max,
+                            'palette': ['#8c510a', '#d8b365', '#f6e8c3', '#f5f5f5', '#c7eae5', '#5ab4ac', '#01665e'],
+                            'opacity': vis_opacity
+                        }
+                        label_name = "Anomalia de Precipitação (mm)"
+                    elif "NDVI" in selected_index:
+                        vis_params = {
+                            'min': vis_min,
+                            'max': vis_max,
+                            'palette': ['#FFFFFF', '#CE7E45', '#DF923D', '#F1B555', '#FCD163', '#99B718', '#74A901', '#66A000', '#529400'],
+                            'opacity': vis_opacity
+                        }
+                        label_name = "NDVI Médio (MODIS)"
+                    else:
+                        vis_params = {
+                            'min': vis_min,
+                            'max': vis_max,
+                            'palette': ['#ffffcc', '#a1dab4', '#41b6c4', '#2c7fb8', '#253494'],
+                            'opacity': vis_opacity
+                        }
+                        label_name = "Precipitação Total (CHIRPS) (mm)"
+                    
+                    layer_name = selected_index
+                    
+                m.addLayer(ee_img, vis_params, layer_name)
+                if 'palette' in vis_params:
+                    m.add_colorbar(vis_params, label=label_name, layer_name=layer_name)
                 
                 style = {'color': '#00A859' if custom_geometry is not None else 'black', 'fillColor': '00000000', 'width': 2.5}
                 m.addLayer(roi.style(**style), {}, 'Área de Estudo')
