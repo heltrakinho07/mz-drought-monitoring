@@ -534,7 +534,7 @@ with st.sidebar:
     # User Authentication UI
     if not ee_ready:
         st.markdown("---")
-        st.markdown("### 🔑 Autenticação do Utilizador")
+        st.markdown("### Autenticação do Utilizador")
         if st.session_state.get("user_auth_success", False):
             st.success(f"Conectado ao Projeto: **{st.session_state.user_project_id}**", icon=":material/check_circle:")
             if st.button("Desconectar conta", key="logout_btn", type="secondary"):
@@ -568,7 +568,7 @@ with st.sidebar:
             
             if st.session_state.get("user_auth_url"):
                 st.info("Clique no link abaixo para fazer login e autorizar o acesso:")
-                st.markdown(f"[👉 **Entrar com o Google & Autorizar**]({st.session_state.user_auth_url})", unsafe_allow_html=True)
+                st.markdown(f"[**Entrar com o Google & Autorizar**]({st.session_state.user_auth_url})", unsafe_allow_html=True)
                 
                 auth_code = st.text_input(
                     "2. Cole o código de autorização gerado:",
@@ -726,7 +726,7 @@ with st.sidebar:
     # Sentinel-2 configuration UI (only active if real-time GEE is authenticated)
     if ee_effective_ready and not demo_mode:
         st.markdown("---")
-        st.subheader("🛰️ Sentinel-2 (Alta Resolução 10m)", anchor=False)
+        st.subheader("Sentinel-2 (Alta Resolução 10m)", anchor=False)
         use_sentinel = st.checkbox(
             "Ativar Sentinel-2",
             value=False,
@@ -753,7 +753,7 @@ with st.sidebar:
             
     # Map visualization parameters expander
     st.markdown("---")
-    with st.expander("🎨 Ajustar Parâmetros do Mapa", expanded=False):
+    with st.expander("Ajustar Parâmetros do Mapa", expanded=False):
         # Establish default min/max ranges depending on visual option
         if use_sentinel:
             if s2_visual == "NDVI":
@@ -779,7 +779,7 @@ with st.sidebar:
         vis_opacity = st.slider("Opacidade da Camada", min_value=0.0, max_value=1.0, value=1.0, step=0.1)
 
     st.markdown("---")
-    st.markdown("Desenvolvido para Monitorização de Secas em Moçambique 🇲🇿")
+    st.markdown("Desenvolvido para Monitorização de Secas em Moçambique")
 
 # Retrive Custom Geometry from Session State
 custom_geometry = st.session_state.custom_geometry
@@ -798,7 +798,7 @@ if analysis_level == "Área Personalizada (GeoJSON)" and custom_geometry is None
         <div class="custom-banner-subtitle">Plataforma integrada de análise geoespacial e monitorização hidroclimática por satélite utilizando dados de Detecção Remota MODIS e CHIRPS em tempo real.</div>
     </div>
     """, unsafe_allow_html=True)
-    st.info("💡 **Aguardando Área de Estudo:** Por favor, carregue um arquivo GeoJSON na barra lateral para iniciar a análise espacial personalizada.", icon=":material/upload_file:")
+    st.info("**Aguardando Área de Estudo:** Por favor, carregue um arquivo GeoJSON na barra lateral para iniciar a análise espacial personalizada.", icon=":material/upload_file:")
     st.stop()
 
 # Define text representation of selected region
@@ -1110,6 +1110,14 @@ else:
             df_data = generate_simulated_data(selected_region_text, start_date, end_date)
             demo_mode = True
 
+# Calculate Vegetation Condition Index (VCI) globally
+if not df_data.empty:
+    ndvi_min = df_data["NDVI"].min()
+    ndvi_max = df_data["NDVI"].max()
+    if ndvi_max - ndvi_min < 0.05:
+        ndvi_min, ndvi_max = 0.15, 0.75
+    df_data["VCI"] = ((df_data["NDVI"] - ndvi_min) / (ndvi_max - ndvi_min)) * 100
+
 # --- CALCULATE LATEST METRICS FOR METRICS SECTION ---
 if not df_data.empty:
     latest_row = df_data.iloc[-1]
@@ -1232,7 +1240,7 @@ with tab_map:
                 ).add_to(m)
             
         m.to_streamlit(height=600)
-        st.info("💡 **Modo de simulação ativo:** O mapa exibe marcadores estilizados ou geometrias de controle. Carregue um GeoJSON para ver o contorno personalizado.", icon=":material/info:")
+        st.info("**Modo de simulação ativo:** O mapa exibe marcadores estilizados ou geometrias de controle. Carregue um GeoJSON para ver o contorno personalizado.", icon=":material/info:")
     else:
         m = geemap.Map(center=coord_info["center"], zoom=coord_info["zoom"], add_google_map=False)
         m.add_basemap("Esri.WorldTerrain")
@@ -1351,7 +1359,7 @@ with tab_trends:
         st.markdown("---")
         
         if analysis_type == "Comparativo Básico":
-            st.markdown("### 📊 Série Temporal Comparativa vs. Normais Históricas")
+            st.markdown("### Série Temporal Comparativa vs. Normais Históricas")
             
             # Plot NDVI comparison
             st.markdown("#### NDVI (Saúde da Vegetação) vs. Histórico de Referência")
@@ -1419,7 +1427,7 @@ with tab_trends:
             st.altair_chart(precip_chart, use_container_width=True)
             
         elif analysis_type == "Dispersão de Anomalias":
-            st.markdown("### 📈 Correlação Estacional de Anomalias")
+            st.markdown("### Correlação Estacional de Anomalias")
             st.markdown("Esta análise mostra a relação direta entre o desvio de chuva e a resposta vegetativa. Pontos no quadrante inferior esquerdo indicam estresse hídrico e de vegetação severos simultâneos.")
             
             scatter = alt.Chart(df_data).mark_circle(size=100).encode(
@@ -1452,15 +1460,8 @@ with tab_trends:
             st.altair_chart(chart, use_container_width=True)
             
         elif analysis_type == "Vegetation Condition Index (VCI)":
-            st.markdown("### 🌾 Vegetation Condition Index (VCI)")
+            st.markdown("### Vegetation Condition Index (VCI)")
             st.markdown("O VCI (%) expressa o vigor atual da vegetação em relação aos extremos históricos. Valores abaixo de 35% indicam seca moderada a extrema.")
-            
-            ndvi_min = df_data["NDVI"].min()
-            ndvi_max = df_data["NDVI"].max()
-            if ndvi_max - ndvi_min < 0.05:
-                ndvi_min, ndvi_max = 0.15, 0.75
-                
-            df_data["VCI"] = ((df_data["NDVI"] - ndvi_min) / (ndvi_max - ndvi_min)) * 100
             
             vci_line = alt.Chart(df_data).mark_line(color="#ffffff", size=3, point=alt.OverlayMarkDef(color="#ffffff")).encode(
                 x=alt.X("Date:T", title="Data"),
@@ -1495,7 +1496,7 @@ with tab_trends:
             st.altair_chart(vci_chart, use_container_width=True)
             
         elif analysis_type == "Análise de Atraso (Lag)":
-            st.markdown("### ⏱️ Coeficiente de Correlação Cruzada Temporal (Lag Analysis)")
+            st.markdown("### Coeficiente de Correlação Cruzada Temporal (Lag Analysis)")
             st.markdown("Esta análise científica mostra o tempo de resposta da vegetação (NDVI) após eventos de chuva. Normalmente, o maior coeficiente (r) indica o atraso de meses mais provável da resposta vegetal.")
             
             lags = [0, 1, 2, 3]
@@ -1527,6 +1528,53 @@ with tab_trends:
             )
             
             st.altair_chart(lag_chart, use_container_width=True)
+            
+        # Data export section (available for all sub-analyses under Trends)
+        st.markdown("---")
+        st.subheader("Tabela de Dados e Exportação", anchor=False)
+        st.markdown("Visualize os valores consolidados da série temporal selecionada e exporte-os em formato profissional para relatórios e análises externas.")
+        
+        # Prepare df for presentation (format columns, round values)
+        df_disp = df_data.copy()
+        if "Date" in df_disp.columns:
+            df_disp["Data"] = df_disp["Date"].dt.strftime("%Y-%m-%d")
+            df_disp = df_disp.drop(columns=["Date"])
+        
+        # Rename columns to Portuguese professional headers
+        rename_dict = {
+            "NDVI": "NDVI Médio",
+            "NDVI_Historical": "Média Histórica NDVI",
+            "NDVI_Anomaly": "Anomalia NDVI",
+            "Precipitation": "Precipitação (mm)",
+            "Precipitation_Historical": "Precipitação Histórica (mm)",
+            "Precipitation_Anomaly": "Anomalia Precipitação (mm)",
+            "VCI": "Vegetation Condition Index (%)"
+        }
+        df_disp = df_disp.rename(columns=rename_dict)
+        
+        # Reorder columns to put Data first
+        cols = ["Data"] + [c for c in df_disp.columns if c != "Data" and c in df_disp.columns]
+        df_disp = df_disp[cols]
+        
+        st.dataframe(df_disp.style.format({
+            "NDVI Médio": "{:.3f}",
+            "Média Histórica NDVI": "{:.3f}",
+            "Anomalia NDVI": "{:+.3f}",
+            "Precipitação (mm)": "{:.1f}",
+            "Precipitação Histórica (mm)": "{:.1f}",
+            "Anomalia Precipitação (mm)": "{:+.1f}",
+            "Vegetation Condition Index (%)": "{:.1f}%"
+        }, na_rep="-"), use_container_width=True)
+        
+        # Convert to CSV for download
+        csv_data = df_disp.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="Descarregar Dados de Série Temporal (CSV)",
+            data=csv_data,
+            file_name=f"serie_temporal_secas_{selected_region_text.lower().replace(' ', '_')}.csv",
+            mime="text/csv",
+            use_container_width=True
+        )
             
     else:
         st.info("Nenhum dado de série temporal disponível para a região e período selecionados.", icon=":material/warning:")
@@ -1573,7 +1621,7 @@ with tab_assess:
             
     if severity == "Seca Crítica":
         st.error(
-            "⚠️ **Recomendações de Emergência:**\n\n"
+            "**Recomendações de Emergência:**\n\n"
             "1. **Conservação de Água:** Priorizar níveis de armazenamento em reservatórios e impor restrições rigorosas ao consumo não essencial.\n"
             "2. **Apoio Agrícola de Emergência:** Distribuir sementes de ciclo curto, disponibilizar subsídios para irrigação e providenciar assistência alimentar para comunidades rurais vulneráveis.\n"
             "3. **Proteção da Pecuária:** Relocalizar efetivos pecuários e distribuir suplementos alimentares de emergência para mitigar a degradação de pastagens.",
@@ -1581,7 +1629,7 @@ with tab_assess:
         )
     elif severity == "Seca Moderada":
         st.warning(
-            "⚠️ **Protocolos de Mitigação e Alerta:**\n\n"
+            "**Protocolos de Mitigação e Alerta:**\n\n"
             "1. **Monitorização Intensiva:** Aumentar a frequência de monitorização hidrológica dos caudais e reservas locais.\n"
             "2. **Eficiência no Regadio:** Apoiar os produtores agrícolas na adoção de métodos de rega eficientes (gota-a-gota) e sensibilizar para a rega em períodos de menor evaporação.\n"
             "3. **Planeamento Municipal:** Ativar planos municipais de contingência para apoio a captações de água sob stresse hídrico.",
@@ -1589,7 +1637,7 @@ with tab_assess:
         )
     else:
         st.success(
-            "✅ **Atividades e Monitorização de Rotina:**\n\n"
+            "**Atividades e Monitorização de Rotina:**\n\n"
             "As condições vegetativas e pluviométricas encontram-se dentro dos limites históricos normais. "
             "Recomenda-se a manutenção dos protocolos padrão de monitorização agro-climática de rotina.",
             icon=":material/check_circle:"
