@@ -452,6 +452,29 @@ def init_ee():
 ee_ready = init_ee()
 
 # --- INITIALIZE SESSION STATE FOR ROBUSTNESS ---
+if "user_credentials" not in st.session_state:
+    st.session_state.user_credentials = None
+if "user_project_id" not in st.session_state:
+    st.session_state.user_project_id = ""
+if "user_auth_url" not in st.session_state:
+    st.session_state.user_auth_url = ""
+if "user_code_verifier" not in st.session_state:
+    st.session_state.user_code_verifier = ""
+if "user_auth_success" not in st.session_state:
+    st.session_state.user_auth_success = False
+
+# Try initializing with user's stored credentials if global credentials failed
+if not ee_ready and st.session_state.user_credentials and st.session_state.user_project_id:
+    try:
+        ee.Initialize(st.session_state.user_credentials, project=st.session_state.user_project_id)
+        st.session_state.user_auth_success = True
+    except Exception as e:
+        print("Failed to initialize GEE with stored user credentials:", e)
+        st.session_state.user_auth_success = False
+
+# Effective GEE readiness
+ee_effective_ready = ee_ready or st.session_state.user_auth_success
+
 if "custom_geometry" not in st.session_state:
     st.session_state.custom_geometry = None
 if "custom_center_zoom" not in st.session_state:
@@ -494,7 +517,8 @@ with st.sidebar:
     st.header(":material/settings: Definições")
     
     # Mode selector with automatic fallback
-    if ee_ready:
+    ee_effective_ready = ee_ready or st.session_state.get("user_auth_success", False)
+    if ee_effective_ready:
         app_mode = st.segmented_control(
             "Modo de funcionamento",
             options=["Tempo Real (GEE)", "Simulação (Demonstração)"],
@@ -506,6 +530,103 @@ with st.sidebar:
         app_mode = "Simulação (Demonstração)"
         
     demo_mode = (app_mode == "Simulação (Demonstração)")
+
+    # User Authentication UI
+    if not ee_ready:
+        st.markdown("---")
+        st.markdown("### 🔑 Autenticação do Utilizador")
+        if st.session_state.get("user_auth_success", False):
+            st.success(f"Conectado ao Projeto: **{st.session_state.user_project_id}**", icon=":material/check_circle:")
+            if st.button("Desconectar conta", key="logout_btn", type="secondary"):
+                st.session_state.user_credentials = None
+                st.session_state.user_project_id = ""
+                st.session_state.user_auth_url = ""
+                st.session_state.user_code_verifier = ""
+                st.session_state.user_auth_success = False
+                st.rerun()
+        else:
+            project_id_input = st.text_input(
+                "ID do Projeto Google Cloud",
+                value=st.session_state.get("user_project_id", ""),
+                placeholder="ex: eengine-project",
+                help="O seu projeto Google Cloud com a API do Earth Engine ativada."
+            )
+            
+            if st.button("1. Gerar Link de Autenticação", type="primary", use_container_width=True):
+                if not project_id_input:
+                    st.error("Por favor, introduza o ID do Projeto primeiro!")
+                else:
+                    try:
+                        import ee.oauth
+                        flow = ee.oauth.Flow('notebook')
+                        st.session_state.user_auth_url = flow.auth_url
+                        st.session_state.user_code_verifier = flow.code_verifier
+                        st.session_state.user_project_id = project_id_input
+                        st.rerun()
+                    except Exception as ex:
+                        st.error(f"Erro ao gerar link: {ex}")
+            
+            if st.session_state.get("user_auth_url"):
+                st.info("Clique no link abaixo para fazer login e autorizar o acesso:")
+                st.markdown(f"[👉 **Entrar com o Google & Autorizar**]({st.session_state.user_auth_url})", unsafe_allow_html=True)
+                
+                auth_code = st.text_input(
+                    "2. Cole o código de autorização gerado:",
+                    placeholder="Cole o código aqui...",
+                    type="password"
+                )
+                
+                if st.button("3. Confirmar Autenticação", use_container_width=True):
+                    if not auth_code:
+                        st.error("Por favor, cole o código de autorização primeiro!")
+                    else:
+                        with st.spinner("A autenticar com o Earth Engine..."):
+                            try:
+                                import ee.oauth
+                                from google.oauth2.credentials import Credentials
+                                
+                                verifier = st.session_state.user_code_verifier
+                                fetch_data = {}
+                                if verifier and ':' in verifier:
+                                    request_id, token_verifier, client_verifier = verifier.split(':')
+                                    fetch_data = dict(request_id=request_id, client_verifier=client_verifier)
+                                    code_verifier_to_use = token_verifier
+                                else:
+                                    code_verifier_to_use = verifier
+                                    
+                                client_info = {}
+                                scopes = ee.oauth.SCOPES
+                                if fetch_data:
+                                    import urllib.request
+                                    import urllib.parse
+                                    data = json.dumps(fetch_data).encode()
+                                    headers = {'Content-Type': 'application/json; charset=UTF-8'}
+                                    fetch_client = urllib.request.Request(ee.oauth.FETCH_URL, data=data, headers=headers)
+                                    fetched_info = json.loads(urllib.request.urlopen(fetch_client).read().decode())
+                                    if 'error' in fetched_info:
+                                        raise Exception(fetched_info['error'])
+                                    client_info = {k: fetched_info[k] for k in ['client_id', 'client_secret']}
+                                    scopes = fetched_info.get('scopes') or scopes
+                                    
+                                refresh_token = ee.oauth.request_token(auth_code.strip(), code_verifier_to_use, **client_info)
+                                
+                                credentials = Credentials(
+                                    token=None,
+                                    refresh_token=refresh_token,
+                                    client_id=client_info.get('client_id', ee.oauth.CLIENT_ID),
+                                    client_secret=client_info.get('client_secret', ee.oauth.CLIENT_SECRET),
+                                    token_uri=ee.oauth.TOKEN_URI,
+                                    scopes=scopes
+                                )
+                                
+                                ee.Initialize(credentials, project=st.session_state.user_project_id)
+                                
+                                st.session_state.user_credentials = credentials
+                                st.session_state.user_auth_success = True
+                                st.success("Autenticado com sucesso! A carregar dados...")
+                                st.rerun()
+                            except Exception as ex:
+                                st.error(f"Falha na autenticação: {ex}")
     
     # Analysis Level
     analysis_level = st.radio(
