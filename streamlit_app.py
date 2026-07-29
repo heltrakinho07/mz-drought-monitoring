@@ -389,13 +389,18 @@ div[data-testid="stFileUploader"] {
 @st.cache_resource
 def init_ee():
     try:
-        if "GEE_KEY_FILE" in st.secrets and "GEE_PROJECT_ID" in st.secrets:
-            import os
+        import os
+        key_file_exists = False
+        abs_key_file = ""
+        if "GEE_KEY_FILE" in st.secrets:
             key_file = st.secrets["GEE_KEY_FILE"]
-            client_email = st.secrets.get("GEE_CLIENT_EMAIL", "geoanalises@eengine-project.iam.gserviceaccount.com")
             app_dir = os.path.dirname(os.path.abspath(__file__))
             abs_key_file = os.path.join(app_dir, key_file) if not os.path.isabs(key_file) else key_file
-            
+            if os.path.exists(abs_key_file):
+                key_file_exists = True
+                
+        if key_file_exists and "GEE_PROJECT_ID" in st.secrets:
+            client_email = st.secrets.get("GEE_CLIENT_EMAIL", "geoanalises@eengine-project.iam.gserviceaccount.com")
             credentials = ee.ServiceAccountCredentials(client_email, abs_key_file)
             ee.Initialize(credentials, project=st.secrets["GEE_PROJECT_ID"])
             return True
@@ -409,7 +414,10 @@ def init_ee():
         else:
             ee.Initialize()
             return True
-    except Exception:
+    except Exception as e:
+        import traceback
+        print("GEE Initialization Error:")
+        traceback.print_exc()
         return False
 
 # Initialize Earth Engine
