@@ -1,0 +1,7 @@
+.streamlit/secrets.toml
+.streamlit/gee_key.json
+__pycache__/
+*.pyc
+.venv/
+venv/
+.DS_Store

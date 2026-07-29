@@ -1,0 +1,23 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Área de Estudo Exemplo (Região Sul de Moçambique)"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [32.10, -25.89],
+            [32.90, -25.89],
+            [32.90, -25.20],
+            [32.10, -25.20],
+            [32.10, -25.89]
+          ]
+        ]
+      }
+    }
+  ]
+}
