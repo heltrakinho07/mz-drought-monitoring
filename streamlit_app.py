@@ -415,6 +415,8 @@ def init_ee():
                 key_dict = json.loads(key_val)
             else:
                 key_dict = dict(key_val)
+            if "private_key" in key_dict:
+                key_dict["private_key"] = key_dict["private_key"].replace('\\n', '\n')
             credentials = service_account.Credentials.from_service_account_info(
                 key_dict,
                 scopes=['https://www.googleapis.com/auth/earthengine']
