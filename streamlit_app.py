@@ -406,8 +406,13 @@ def init_ee():
             return True
         elif "GEE_SERVICE_ACCOUNT_KEY" in st.secrets and "GEE_PROJECT_ID" in st.secrets:
             import json
-            key_str = st.secrets["GEE_SERVICE_ACCOUNT_KEY"]
-            key_dict = json.loads(key_str)
+            key_val = st.secrets["GEE_SERVICE_ACCOUNT_KEY"]
+            if isinstance(key_val, str):
+                key_dict = json.loads(key_val)
+                key_str = key_val
+            else:
+                key_dict = dict(key_val)
+                key_str = json.dumps(key_dict)
             credentials = ee.ServiceAccountCredentials(key_dict["client_email"], key_data=key_str)
             ee.Initialize(credentials, project=st.secrets["GEE_PROJECT_ID"])
             return True
