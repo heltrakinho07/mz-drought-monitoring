@@ -424,8 +424,24 @@ def init_ee():
             ee.Initialize(credentials, project=st.secrets["GEE_PROJECT_ID"])
             return True
         else:
-            ee.Initialize()
-            return True
+            # Check if default credentials exist before calling ee.Initialize()
+            # to prevent blocking the server in non-interactive environments (Streamlit Cloud).
+            import os
+            has_creds = False
+            if os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+                has_creds = True
+            else:
+                home = os.path.expanduser("~")
+                gcloud_path = os.path.join(home, ".config", "gcloud", "application_default_credentials.json")
+                ee_path = os.path.join(home, ".config", "earthengine", "credentials")
+                if os.path.exists(gcloud_path) or os.path.exists(ee_path):
+                    has_creds = True
+            
+            if has_creds:
+                ee.Initialize()
+                return True
+            else:
+                raise Exception("Nenhum segredo ou credencial padrão do Earth Engine foi encontrada no sistema. A abortar inicialização interativa para evitar bloqueio.")
     except Exception as e:
         import traceback
         print("GEE Initialization Error:")
