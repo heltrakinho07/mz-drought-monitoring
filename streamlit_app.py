@@ -400,20 +400,25 @@ def init_ee():
                 key_file_exists = True
                 
         if key_file_exists and "GEE_PROJECT_ID" in st.secrets:
-            client_email = st.secrets.get("GEE_CLIENT_EMAIL", "geoanalises@eengine-project.iam.gserviceaccount.com")
-            credentials = ee.ServiceAccountCredentials(client_email, abs_key_file)
+            from google.oauth2 import service_account
+            credentials = service_account.Credentials.from_service_account_file(
+                abs_key_file,
+                scopes=['https://www.googleapis.com/auth/earthengine']
+            )
             ee.Initialize(credentials, project=st.secrets["GEE_PROJECT_ID"])
             return True
         elif "GEE_SERVICE_ACCOUNT_KEY" in st.secrets and "GEE_PROJECT_ID" in st.secrets:
             import json
+            from google.oauth2 import service_account
             key_val = st.secrets["GEE_SERVICE_ACCOUNT_KEY"]
             if isinstance(key_val, str):
                 key_dict = json.loads(key_val)
-                key_str = key_val
             else:
                 key_dict = dict(key_val)
-                key_str = json.dumps(key_dict)
-            credentials = ee.ServiceAccountCredentials(key_dict["client_email"], key_data=key_str)
+            credentials = service_account.Credentials.from_service_account_info(
+                key_dict,
+                scopes=['https://www.googleapis.com/auth/earthengine']
+            )
             ee.Initialize(credentials, project=st.secrets["GEE_PROJECT_ID"])
             return True
         else:
