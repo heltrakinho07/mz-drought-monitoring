@@ -37,11 +37,11 @@ Create a CSV with one record per region and calendar month, with these columns:
 
 **Do not** export simulated fallback values from streamlit_app.py. Do not relabel synthetic data. Do not commit API credentials, private account keys, raw restricted data, or customer datasets.
 
-Suggested processing: CHIRPS DAILY (UCSB-CHG/CHIRPS/DAILY); MODIS MOD13Q1 Collection 6.1 (MODIS/061/MOD13Q1), apply SummaryQA <= 1, NDVI scale factor 0.0001; harmonise temporal support and resolution, state province aggregation and spatial weights explicitly. Data extraction code and provenance logs still need to be developed and checked.
+Suggested processing: CHIRPS DAILY (UCSB-CHG/CHIRPS/DAILY); MODIS MOD13Q1 Collection 6.1 (MODIS/061/MOD13Q1), apply SummaryQA <= 1, NDVI scale factor 0.0001; harmonise temporal support and resolution, state province aggregation and spatial weights explicitly. GEE monthly export and source-file provenance tooling is now implemented in `export_gee.py` and `combine_exports.py` but has **not yet been executed against live Earth Engine data**. See `GEE_SETUP.md`. Authentication, real exports, validation and provenance verification remain outstanding.
 
 ## Initial reproducible baseline
 
-The script in this folder:
+The baseline script `analyze.py` in this folder:
 - checks required columns, origin label, physical ranges, uniqueness and monthly continuity;
 - computes SPI-3 using a fitted zero-adjusted gamma distribution **by region and calendar month**, on 2003–2020 only (requires sufficient calibration observations);
 - computes season-specific VCI from MODIS NDVI minima/maxima on 2003–2020 only;
@@ -50,6 +50,10 @@ The script in this folder:
 - outputs timeseries and lag metrics as CSVs.
 
 **Limitations:** Bootstrap intervals based on five test years are unstable. Neither a lag correlation nor SPI/VCI co-variation establishes causality, true forecasting skill, or an independently validated drought classifier. The baseline does not yet handle spatial autocorrelation or change in land cover. Holdout years must not be used to select a lag or adjust the method.
+
+## Earth Engine extraction (not yet run live)
+
+Read [`GEE_SETUP.md`](GEE_SETUP.md) for project setup, safe authentication, one-year pilot exports and merging observed CSV files. Unit tests only use synthetic fixtures.
 
 ## Run locally with verified monthly CSV
 
