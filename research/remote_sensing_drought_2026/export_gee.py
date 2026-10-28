@@ -131,7 +131,14 @@ def main() -> None:
         raise RuntimeError("No Mozambique provinces found in GAUL 2015; confirm dataset")
     print("Selected GAUL level-1 features:", number)
     if args.check_access:
-        print("Connection and region query successful. No export started.")
+        # Lightweight live catalog/permission smoke test; no batch jobs started.
+        pilot_start, pilot_end = "2020-01-01", "2020-02-01"
+        ch = ee.ImageCollection(COLLECTIONS["precip"]).filterDate(pilot_start, pilot_end).size().getInfo()
+        md = ee.ImageCollection(COLLECTIONS["vegetation"]).filterDate(pilot_start, pilot_end).size().getInfo()
+        if ch < 28 or md < 1:
+            raise RuntimeError(f"Earth Engine source availability check failed: CHIRPS={ch}, MODIS={md}")
+        print(f"Connection successful: GAUL regions={number}, Jan 2020 CHIRPS days={ch}, MODIS scenes={md}")
+        print("No export started. Remote annual processing is still untested.")
         return
     if len(years) > args.max_tasks:
         raise ValueError(
