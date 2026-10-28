@@ -1,0 +1,12 @@
+# Scientific exports/results and credentials must not be committed.
+exports/
+data/
+results/
+*.manifest.json
+*.csv
+*.jsonl
+.env
+*.credentials.json
+*service-account*.json
+__pycache__/
+.pytest_cache/
